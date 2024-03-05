@@ -1,3 +1,4 @@
+import "./ioc"
 import "./application"
 import "./generator"
 import "./processor"
@@ -5,14 +6,14 @@ import "./writer"
 
 echo "Start"
 
-let
-  g = Generator.new()
-  p = Processor.new()
-  w = Writer.new()
-  app = Application.new(g, p, w)
+let container = IoC()
 
-g.init()
-p.init()
-w.init()
+container.register(Generator, Lifestyle.Transient)
+container.register[Processor](Lifestyle.Transient)
+container.register[Writer](Lifestyle.Singleton)
+container.register[Application](Lifestyle.Singleton)
 
+container.init()
+
+let app = container.resolve[Application]()
 app.run()

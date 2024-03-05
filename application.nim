@@ -1,7 +1,6 @@
 import "./generator"
 import "./processor"
 import "./writer"
-import "./processor"
 
 type
   Application* = ref object of RootObj
