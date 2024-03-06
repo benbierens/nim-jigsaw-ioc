@@ -3,10 +3,6 @@
 # import std/options
 # import std/strutils
 import std/typetraits
-import std/macros
-
-macro dumpImpl(arg: typed): untyped =
-  echo arg.getTypeImpl().treeRepr()
 
 type
   Lifestyle* = enum

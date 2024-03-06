@@ -1,4 +1,5 @@
 import "./processor"
+import "./config"
 
 type
   Writer* = ref object of RootObj
@@ -12,7 +13,7 @@ method write*(self: Writer, output: Output): void =
     raiseAssert("Not initialized!")
   echo "Write: " & output.data
 
-proc new*(T: type Writer): Writer =
+proc new*(T: type Writer, config: Config): Writer =
   Writer(
     isInitialized: false
   )

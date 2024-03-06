@@ -1,3 +1,5 @@
+import "./config"
+
 type
   Generator* = ref object of RootObj
     isInitialized: bool
@@ -10,7 +12,7 @@ method generate*(self: Generator): string =
     raiseAssert("Not initialized!")
   return "A"
 
-proc new*(T: type Generator): Generator =
+proc new*(T: type Generator, config: Config): Generator =
   Generator(
     isInitialized: false
   )
