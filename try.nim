@@ -11,7 +11,7 @@ type
     typeName: string
     foreignArgs: seq[string]
 
-macro ShowType(x: typed): untyped =
+macro ShowType(procName: typed): untyped =
   result = quote do:
     seq[CtorInfo](@[])
 
@@ -68,10 +68,10 @@ macro ShowType(x: typed): untyped =
       objCtor.add(argsExpr)
       result[1][1].add objCtor
 
-  if x.kind == nnkSym:
-    addSignature(x)
+  if procName.kind == nnkSym:
+    addSignature(procName)
   else:
-    for y in x:
+    for y in procName:
       addSignature(y)
       
   # echo result.treeRepr
