@@ -20,7 +20,6 @@ proc register*[T](self: IoC, c: typedesc[T], lifestyle: Lifestyle = Lifestyle.Tr
   echo "register this component type: " & c.name
   let typeName = c.name
 
-
 proc init*(self: IoC): void =
   echo "create all singletons (recurse resolve dependencies)"
   echo "then init each singleton that has one"

@@ -1,6 +1,7 @@
 import "./generator"
 import "./processor"
 import "./writer"
+import "./lifestyles"
 
 type
   Application* = ref object of RootObj
@@ -18,7 +19,7 @@ method run*(self: Application): void =
 proc new*(T: type Application,
     g: Generator,
     p: Processor,
-    w: Writer): Application =
+    w: Writer): Application {.singleton.} =
   Application(
     g: g,
     p: p,

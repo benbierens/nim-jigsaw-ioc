@@ -1,4 +1,5 @@
 import "./config"
+import "./lifestyles"
 
 type
   GeneratorMode = enum
@@ -20,7 +21,7 @@ proc new*(T: type Generator,
   config: Config,
   defIntOption: int = 123,
   defStrOption: string = "value",
-  defEnumOption: GeneratorMode = GeneratorMode.Maybe): Generator =
+  defEnumOption: GeneratorMode = GeneratorMode.Maybe): Generator {.transient.} =
   Generator(
     isInitialized: false
   )

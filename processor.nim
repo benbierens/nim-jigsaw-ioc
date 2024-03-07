@@ -1,3 +1,5 @@
+import "./lifestyles"
+
 type
   Processor* = ref object of RootObj
     isInitialized: bool
@@ -12,7 +14,7 @@ method process*(self: Processor, input: string): Output =
     raiseAssert("Not initialized!")
   return Output(data: input)
 
-proc new*(T: type Processor): Processor =
+proc new*(T: type Processor): Processor {.transient.} =
   Processor(
     isInitialized: false
   )
