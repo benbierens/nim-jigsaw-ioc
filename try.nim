@@ -28,7 +28,8 @@ macro ShowType(x: typed): untyped =
           if fparam.kind == nnkSym:
             ttypeName = $(fparam.strVal)
           elif fparam.kind == nnkIdentDefs:
-            if fparam[1].kind == nnkSym:
+            if fparam[1].kind == nnkSym and
+              fparam[2].kind == nnkEmpty:
               targs.add($fparam[1].strVal)
 
     var isStrA = newStrLitNode(ttypeName)
@@ -73,13 +74,14 @@ macro ShowType(x: typed): untyped =
     for y in x:
       addSignature(y)
       
-  echo result.treeRepr
+  # echo result.treeRepr
 
 echo "actual running:"
 echo "showing 'new' symbols:"
 
 let infos: seq[CtorInfo] = ShowType(new)
 for info in infos:
+    echo ""
     echo "Name: " & info.typeName
     echo "Foreign args:"
     for arg in info.foreignArgs:

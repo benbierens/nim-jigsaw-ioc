@@ -1,6 +1,10 @@
 import "./config"
 
 type
+  GeneratorMode = enum
+    Yes
+    No
+    Maybe
   Generator* = ref object of RootObj
     isInitialized: bool
 
@@ -12,7 +16,11 @@ method generate*(self: Generator): string =
     raiseAssert("Not initialized!")
   return "A"
 
-proc new*(T: type Generator, config: Config): Generator =
+proc new*(T: type Generator,
+  config: Config,
+  defIntOption: int = 123,
+  defStrOption: string = "value",
+  defEnumOption: GeneratorMode = GeneratorMode.Maybe): Generator =
   Generator(
     isInitialized: false
   )
