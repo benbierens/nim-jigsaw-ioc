@@ -11,6 +11,58 @@ type
     typeName: string
     foreignArgs: seq[string]
 
+  # Installer = object
+  #   types: seq[typedesc[]]
+    # instances: todo
+
+
+proc `$`*(info: CtorInfo): string =
+  "CtorInfo[Name: " & info.typeName & " - ForeignArgs: " & info.foreignArgs.join(",") & "]"
+
+template getCtorInfoForType(t: typed, newProcTypes: typed): CtorInfo = 
+  echo "what is this:"
+  echo $t.treeRepr
+  echo "what is that:"
+  echo $newProcTypes.treeRepr
+
+  let typeName = t.strVal
+  # find new-proc for this type
+
+
+  # let impl = newProcType.getImpl
+  # assert impl.kind == nnkProcDef, "Symbol not a procedure!"
+  var 
+    name = ""
+    args:seq[string] = @[]
+
+  # for child in impl:
+  #   if child.kind == nnkFormalParams:
+  #     for fparam in child:
+  #       if fparam.kind == nnkSym:
+  #         name = $(fparam.strVal)
+  #       elif fparam.kind == nnkIdentDefs:
+  #         if fparam[1].kind == nnkSym and
+  #           fparam[2].kind == nnkEmpty:
+  #           args.add($fparam[1].strVal)
+
+  CtorInfo(
+    typeName: name,
+    foreignArgs: args
+  )
+
+macro ListTypes(types: typed, newProcTypes: typed): untyped =
+  echo "listtypes:"
+  echo $types.treeRepr
+
+  for t in types:
+    let info = getCtorInfoForType(t, newProcTypes)
+    echo $info
+
+  # emit a proc:
+  result = quote do:
+    proc yeah() =
+      echo "yeah!"
+
 macro ShowType(procName: typed): untyped =
   result = quote do:
     seq[CtorInfo](@[])
@@ -21,6 +73,10 @@ macro ShowType(procName: typed): untyped =
     var
       ttypeName: string = "unknown"
       targs: seq[string] = @[]
+
+    echo "procdef:"
+    echo $impl.treeRepr
+    echo ""
 
     for child in impl:
       if child.kind == nnkFormalParams:
@@ -77,8 +133,6 @@ macro ShowType(procName: typed): untyped =
   # echo result.treeRepr
 
 echo "actual running:"
-echo "showing 'new' symbols:"
-
 let infos: seq[CtorInfo] = ShowType(new)
 for info in infos:
     echo ""
@@ -86,3 +140,9 @@ for info in infos:
     echo "Foreign args:"
     for arg in info.foreignArgs:
         echo " - " & arg
+
+
+# #ListTypes([Installer([Application, Generator])])
+# ListTypes([Application, Generator], new)
+
+# yeah()
