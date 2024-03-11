@@ -16,6 +16,7 @@ type
     typeName: string
     foreignArgs: seq[string]
     lifestyle: Lifestyle
+    orderNumber: int
 
   Installer[TComponents] = object
     components: TComponents
@@ -40,7 +41,7 @@ proc `$`*(info: CtorInfo): string =
     else:
       raiseAssert("Unknown lifestyle type: " & $info.lifestyle)
 
-  "CtorInfo" & ls & "[Name: " & info.typeName & " - ForeignArgs: " & info.foreignArgs.join(",") & "]"
+  "CtorInfo" & ls & "(" & $info.orderNumber & ")[Name: " & info.typeName & " - ForeignArgs: " & info.foreignArgs.join(",") & "]"
 
 template getLifestyleForPragmas(typeName: string, pragmas: typed): Lifestyle = 
   let
@@ -86,7 +87,8 @@ template getCtorInfoForType(compType: typed, newProcTypes: typed): CtorInfo =
   CtorInfo(
     typeName: name,
     foreignArgs: args,
-    lifestyle: lifestyle
+    lifestyle: lifestyle,
+    orderNumber: -1
   )
 
 template getCtorInfosFromInstaller(installer: typed, newProcTypes: typed): seq[CtorInfo] =
@@ -122,6 +124,29 @@ proc ensureNoLoops(ctors: seq[CtorInfo]) =
 
 # </Loop detection>
 
+# <Ordering>
+
+proc assignOrderNumber(ctors: var seq[CtorInfo], ctor: var CtorInfo) = 
+  if ctor.orderNumber != -1:
+    return
+
+  var n = 0
+  for fa in ctor.foreignArgs:
+    var depCtor = ctors.findCtorOfType(fa)
+    assignOrderNumber(ctors, depCtor)
+    if n < (depCtor.orderNumber + 1):
+      n = depCtor.orderNumber + 1
+
+  ctor.orderNumber = n
+
+proc orderCtors(ctors: var seq[CtorInfo]) = 
+  for ctor in ctors.mitems:
+    assignOrderNumber(ctors, ctor)
+    if ctor.orderNumber == -1:
+      raiseAssert("(Jigsaw-IoC internal error) Unable to find order number for type " & ctor.typeName)
+
+# </Ordering>
+
 macro ListTypes(installers: typed, newProcTypes: typed): untyped =
   var ctorInfos = newSeq[CtorInfo]()
 
@@ -131,13 +156,16 @@ macro ListTypes(installers: typed, newProcTypes: typed): untyped =
     for i in infos:
       ctorInfos.add(i)
 
+  # Ensure no loops
+  ensureNoLoops(ctorInfos)
+
+  # Figure out dependency order
+  orderCtors(ctorInfos)
+
   echo "ctor infos:"
   echo $ctorInfos.len
   for info in ctorInfos:
     echo $info
-
-  # Ensure no loops
-  ensureNoLoops(ctorInfos)
 
   # emit a proc:
   result = quote do:
