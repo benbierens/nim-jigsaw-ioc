@@ -19,7 +19,7 @@ method run*(self: Application): void =
 proc new*(T: type Application,
     g: Generator,
     p: Processor,
-    w: Writer): Application {.singleton.} =
+    w: Writer): Application {.transient.} =
   Application(
     g: g,
     p: p,

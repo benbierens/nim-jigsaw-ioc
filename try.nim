@@ -7,9 +7,15 @@ import "./writer"
 import "./config"
 
 type
+  Lifestyle = enum
+    Transient
+    Singleton
+    Instance
+
   CtorInfo = object
     typeName: string
     foreignArgs: seq[string]
+    lifestyle: Lifestyle
 
   Installer[TComponents] = object
     components: TComponents
@@ -21,26 +27,56 @@ proc findCtorOfType(ctors: seq[CtorInfo], tName: string): CtorInfo =
   for ctor in ctors:
     if ctor.typeName == tName:
       return ctor
-  raiseAssert("Unable to find CtorInfo by name: " & tName)
+  raiseAssert("(Jigsaw-IoC internal error) Unable to find CtorInfo by name: " & tName)
 
 proc `$`*(info: CtorInfo): string =
-  "CtorInfo[Name: " & info.typeName & " - ForeignArgs: " & info.foreignArgs.join(",") & "]"
+  let ls = case info.lifestyle:
+    of Lifestyle.Transient:
+      "(t)"
+    of Lifestyle.Singleton:
+      "(s)"
+    of Lifestyle.Instance:
+      "(i)"
+    else:
+      raiseAssert("Unknown lifestyle type: " & $info.lifestyle)
+
+  "CtorInfo" & ls & "[Name: " & info.typeName & " - ForeignArgs: " & info.foreignArgs.join(",") & "]"
+
+template getLifestyleForPragmas(typeName: string, pragmas: typed): Lifestyle = 
+  let
+    isTransient = pragmas.findChild(it.kind == nnkSym and $(it.strVal) == "transient") != nil
+    isSingleton = pragmas.findChild(it.kind == nnkSym and $(it.strVal) == "singleton") != nil
+    isInstance = pragmas.findChild(it.kind == nnkSym and $(it.strVal) == "instance") != nil
+
+  if isTransient and not isSingleton and not isInstance:
+    Lifestyle.Transient
+  elif not isTransient and isSingleton and not isInstance:
+    Lifestyle.Singleton
+  elif not isTransient and not isSingleton and isInstance:
+    Lifestyle.Instance
+  else:
+    raiseAssert("Invalid lifestyle specification for '" & typeName & "'. Please specify one of {.transient.} OR {.singleton.} OR {.instance.}")
 
 template getCtorInfoForType(compType: typed, newProcTypes: typed): CtorInfo = 
   let typeName = compType.strVal
 
-  var 
+  var
     name = ""
     args:seq[string] = @[]
+    lifestyle: Lifestyle
 
   for newProcType in newProcTypes:
     let procDef = newProcType.getImpl
-    assert procDef.kind == nnkProcDef, "Symbol not a procedure!"
+    assert procDef.kind == nnkProcDef, "(Jigsaw-IoC internal error) getCtorInfoForType: Symbol not a procedure"
 
-    let formalParams = procDef.findChild(it.kind == nnkFormalParams)
-
+    let
+      formalParams = procDef.findChild(it.kind == nnkFormalParams)
+      pragmas = procDef.findChild(it.kind == nnkPragma)
+    
     if formalParams[0].kind == nnkSym and $(formalParams[0].strVal) == typeName:
       name = typeName
+      lifestyle = getLifestyleForPragmas(name, pragmas)
+
       for fparam in formalParams:
         if fparam.kind == nnkIdentDefs:
           if fparam[1].kind == nnkSym and
@@ -49,7 +85,8 @@ template getCtorInfoForType(compType: typed, newProcTypes: typed): CtorInfo =
 
   CtorInfo(
     typeName: name,
-    foreignArgs: args
+    foreignArgs: args,
+    lifestyle: lifestyle
   )
 
 template getCtorInfosFromInstaller(installer: typed, newProcTypes: typed): seq[CtorInfo] =
@@ -97,11 +134,7 @@ macro ListTypes(installers: typed, newProcTypes: typed): untyped =
   echo "ctor infos:"
   echo $ctorInfos.len
   for info in ctorInfos:
-    echo "Name: " & info.typeName
-    echo "Foreign args:"
-    for arg in info.foreignArgs:
-      echo " - " & arg
-    echo ""
+    echo $info
 
   # Ensure no loops
   ensureNoLoops(ctorInfos)
@@ -115,7 +148,7 @@ echo "actual running:"
 
 ListTypes([
   Installer[(Application, Generator)],
-  Installer[(Processor, Writer, Config, Looper, Looper2)]
+  Installer[(Processor, Writer, Config)]
 ], new)
 
 yeah()

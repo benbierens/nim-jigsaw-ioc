@@ -1,2 +1,3 @@
-macro transient*(x: untyped) = x
-macro singleton*(x: untyped) = x
+template transient* {.pragma.}
+template singleton* {.pragma.}
+template instance* {.pragma.}
