@@ -178,23 +178,42 @@ proc createContainerTypeDef(mainList: NimNode, containerType: NimNode, ctors: se
   mainList.add(containerBody)
 
 proc createFieldGetter(mainList: NimNode, containerType: NimNode, ctor: CtorInfo) =
-  let typeSym = ident(ctor.typeName)
-  let fieldName = ident(ctor.fieldName)
-  let getter = quote do:
-    proc get(container: `containerType`, _: type `typeSym`): auto = 
-      return container.`fieldName`
+  let
+    typeSym = ident(ctor.typeName)
+    fieldName = ident(ctor.fieldName)
+    getter = quote do:
+      proc get(container: `containerType`, _: type `typeSym`): auto = 
+        return container.`fieldName`
   mainList.add(getter)
 
-proc createGetters(mainList: NimNode, containerType: NimNode, ctors: seq[CtorInfo]) = 
+proc addDependencyGetCalls(returnCall: NimNode, containerSym: NimNode, containerType: NimNode, ctor: CtorInfo) =
+  for fa in ctor.foreignArgs:
+    let faIdent = ident(fa)
+    returnCall.add(quote do:
+      `containerSym`.get(`faIdent`)
+    )
+
+proc createTransientGetter(mainList: NimNode, containerType: NimNode, newProcTypes: NimNode, ctor: CtorInfo) =
+  let
+    typeSym = ident(ctor.typeName)
+    containerSym = genSym(NimSymKind.nskParam, "container")
+
+  let
+    getter = quote do:
+      proc get(`containerSym`: `containerType`, _: type `typeSym`): auto = 
+        return `typeSym`.`newProcTypes`()
+
+  let returnCall = getter.findChild(it.kind == nnkStmtList)[0][0]
+  returnCall.addDependencyGetCalls(containerSym, containerType, ctor)
+
+  mainList.add(getter)
+
+proc createGetters(mainList: NimNode, containerType: NimNode, newProcTypes: NimNode, ctors: seq[CtorInfo]) = 
   for ctor in ctors:
     if ctor.hasInstanceLifestyle:
       createFieldGetter(mainList, containerType, ctor)
-    # else:
-    #   let typeSym = ident(ctor.typeName)
-    #   let getter = quote do:
-    #     proc get(container: `containerType`, _: type `typeSym`): string = 
-    #       "A"
-    #   mainList.add(getter)
+    else:
+      createTransientGetter(mainList, containerType, newProcTypes, ctor)
 
 proc createContainerCall(mainList: NimNode, containerType: NimNode) =
   mainList.add(
@@ -231,7 +250,7 @@ macro CreateContainer(installers: typed, newProcTypes: typed): untyped =
 
   createContainerTypeDef(mainList, containerType, ctorInfos)
 
-  createGetters(mainList, containerType, ctorInfos)
+  createGetters(mainList, containerType, newProcTypes, ctorInfos)
 
   createContainerCall(mainList, containerType)
 
