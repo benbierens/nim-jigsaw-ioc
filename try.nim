@@ -1,4 +1,4 @@
-import macros, strutils, sequtils
+import macros, strutils, sequtils, algorithm
 import "./ioc"
 import "./application"
 import "./generator"
@@ -42,6 +42,9 @@ proc `$`*(info: CtorInfo): string =
       raiseAssert("Unknown lifestyle type: " & $info.lifestyle)
 
   "CtorInfo" & ls & "(" & $info.orderNumber & ")[Name: " & info.typeName & " - ForeignArgs: " & info.foreignArgs.join(",") & "]"
+
+proc fieldName(info: CtorInfo): string =
+  "instance" & info.typeName
 
 template getLifestyleForPragmas(typeName: string, pragmas: typed): Lifestyle = 
   let
@@ -145,9 +148,29 @@ proc orderCtors(ctors: var seq[CtorInfo]) =
     if ctor.orderNumber == -1:
       raiseAssert("(Jigsaw-IoC internal error) Unable to find order number for type " & ctor.typeName)
 
+  proc byOrderNumber(a, b: CtorInfo): int = 
+    a.orderNumber - b.orderNumber
+
+  sort(ctors, byOrderNumber)
+
 # </Ordering>
 
-macro ListTypes(installers: typed, newProcTypes: typed): untyped =
+# <Emission>
+
+proc createInstanceFields(containerBody: NimNode, ctors: seq[CtorInfo]) = 
+  let recList = newNimNode(NimNodeKind.nnkRecList, containerBody)
+  let objTy = containerBody[0].findChild(it.kind == nnkRefTy)[0]
+  objTy[2] = recList
+
+  for ctor in ctors:
+    if ctor.lifestyle == Lifestyle.Singleton or ctor.lifestyle == Lifestyle.Instance:
+      recList.add(
+        newIdentDefs(ident(ctor.fieldName), ident(ctor.typeName))
+      )
+
+# </Emission>
+
+macro CreateContainer(installers: typed, newProcTypes: typed): untyped =
   var ctorInfos = newSeq[CtorInfo]()
 
   # Inspect installers to create ctorInfo objects.
@@ -167,16 +190,34 @@ macro ListTypes(installers: typed, newProcTypes: typed): untyped =
   for info in ctorInfos:
     echo $info
 
-  # emit a proc:
+  # Emit the container
+  let containerType = genSym(NimSymKind.nskType, "Container")
+  let containerBody = quote do:
+    type
+      `containerType` = ref object
+
+  createInstanceFields(containerBody, ctorInfos)
+
+
+
   result = quote do:
-    proc yeah() =
-      echo "yeah!"
+    `containerBody`
+
+    proc get(): string =
+      "A"
+    
+    `containerType`() 
+
+  echo "result:"
+  echo result.treeRepr
 
 echo "actual running:"
 
-ListTypes([
+let container = CreateContainer([
   Installer[(Application, Generator)],
   Installer[(Processor, Writer, Config)]
 ], new)
 
-yeah()
+echo "done"
+
+
