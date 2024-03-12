@@ -273,15 +273,15 @@ macro CreateContainer*(installers: typed, newProcTypes: typed): untyped =
 
   createContainerTypeDef(mainList, containerType, ctorInfos)
 
-  # createGetters(mainList, containerType, newProcTypes, ctorInfos)
+  createGetters(mainList, containerType, newProcTypes, ctorInfos)
 
   createInitializer(mainList, containerType, newProcTypes, ctorInfos)
 
   createContainerCall(mainList, containerType)
 
-  echo ""
-  echo mainList.treeRepr
-  echo ""
+  # echo ""
+  # echo mainList.treeRepr
+  # echo ""
   
 
   mainList
