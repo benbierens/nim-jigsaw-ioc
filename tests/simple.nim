@@ -23,7 +23,7 @@ suite "Simple resolution":
         Installer[(Application, Database)]
       ], new)
 
-      db = container.get(Database)
+    let db = container.get(Database)
 
     check:
       db.state == 0

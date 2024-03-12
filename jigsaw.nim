@@ -177,11 +177,11 @@ proc createFieldGetter(mainList: NimNode, containerType: NimNode, ctor: CtorInfo
     typeSym = ident(ctor.typeName)
     fieldName = ident(ctor.fieldName)
     getter = quote do:
-      proc get*(container: `containerType`, _: type `typeSym`): auto = 
+      proc get(container: `containerType`, _: type `typeSym`): auto = 
         return container.`fieldName`
   mainList.add(getter)
 
-proc addDependencyGetCalls(returnCall: NimNode, containerSym: NimNode, containerType: NimNode, ctor: CtorInfo) =
+proc addDependencyGetCalls(returnCall: NimNode, containerSym: NimNode, ctor: CtorInfo) =
   for fa in ctor.foreignArgs:
     let faIdent = ident(fa)
     returnCall.add(quote do:
@@ -195,11 +195,11 @@ proc createTransientGetter(mainList: NimNode, containerType: NimNode, newProcTyp
 
   let
     getter = quote do:
-      proc get*(`containerSym`: `containerType`, _: type `typeSym`): auto = 
+      proc get(`containerSym`: `containerType`, _: type `typeSym`): auto = 
         return `typeSym`.`newProcTypes`()
 
   let returnCall = getter.findChild(it.kind == nnkStmtList)[0][0]
-  returnCall.addDependencyGetCalls(containerSym, containerType, ctor)
+  returnCall.addDependencyGetCalls(containerSym, ctor)
 
   mainList.add(getter)
 
@@ -217,6 +217,39 @@ proc createContainerCall(mainList: NimNode, containerType: NimNode) =
   )
 
 # </Emission>
+
+# <Initialization>
+
+proc createInitializeAssignment(assignments: NimNode, containerSym: NimNode, newProcTypes: NimNode, ctor: CtorInfo) =
+  let 
+    typeSym = ident(ctor.typeName)
+    fieldIdent = ident(ctor.fieldName)
+
+  let assignment = quote do:
+    `containerSym`.`fieldIdent` = `typeSym`.`newProcTypes`()
+
+  let assignCall = assignment.findChild(it.kind == nnkCall)
+  assignCall.addDependencyGetCalls(containerSym, ctor)
+
+  assignments.add(assignment)
+
+proc createInitializer(mainList: NimNode, containerType: NimNode, newProcTypes: NimNode, ctors: seq[CtorInfo]) =
+  let
+    containerSym = genSym(NimSymKind.nskParam, "container")
+    containerInit = quote do:
+      proc initialize(`containerSym`: `containerType`)# =
+        # `containerSym`.field = "value"
+
+  var assignments = newStmtList()
+  for ctor in ctors:
+    if ctor.hasInstanceLifestyle:
+      createInitializeAssignment(assignments, containerSym, newProcTypes, ctor)
+
+  containerInit[6] = assignments
+
+  mainList.add(containerInit)
+
+# </Initialization>
 
 macro CreateContainer*(installers: typed, newProcTypes: typed): untyped =
   var ctorInfos = newSeq[CtorInfo]()
@@ -240,8 +273,15 @@ macro CreateContainer*(installers: typed, newProcTypes: typed): untyped =
 
   createContainerTypeDef(mainList, containerType, ctorInfos)
 
-  createGetters(mainList, containerType, newProcTypes, ctorInfos)
+  # createGetters(mainList, containerType, newProcTypes, ctorInfos)
+
+  createInitializer(mainList, containerType, newProcTypes, ctorInfos)
 
   createContainerCall(mainList, containerType)
+
+  echo ""
+  echo mainList.treeRepr
+  echo ""
+  
 
   mainList
