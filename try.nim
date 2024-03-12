@@ -46,6 +46,9 @@ proc `$`*(info: CtorInfo): string =
 proc fieldName(info: CtorInfo): string =
   "instance" & info.typeName
 
+proc hasInstanceLifestyle(info: CtorInfo): bool =
+  info.lifestyle == Lifestyle.Singleton or info.lifestyle == Lifestyle.Instance
+
 template getLifestyleForPragmas(typeName: string, pragmas: typed): Lifestyle = 
   let
     isTransient = pragmas.findChild(it.kind == nnkSym and $(it.strVal) == "transient") != nil
@@ -157,16 +160,47 @@ proc orderCtors(ctors: var seq[CtorInfo]) =
 
 # <Emission>
 
-proc createInstanceFields(containerBody: NimNode, ctors: seq[CtorInfo]) = 
+proc createContainerTypeDef(mainList: NimNode, containerType: NimNode, ctors: seq[CtorInfo]) = 
+  let containerBody = quote do:
+    type
+      `containerType` = ref object
+
   let recList = newNimNode(NimNodeKind.nnkRecList, containerBody)
   let objTy = containerBody[0].findChild(it.kind == nnkRefTy)[0]
   objTy[2] = recList
 
   for ctor in ctors:
-    if ctor.lifestyle == Lifestyle.Singleton or ctor.lifestyle == Lifestyle.Instance:
+    if ctor.hasInstanceLifestyle:
       recList.add(
         newIdentDefs(ident(ctor.fieldName), ident(ctor.typeName))
       )
+
+  mainList.add(containerBody)
+
+proc createFieldGetter(mainList: NimNode, containerType: NimNode, ctor: CtorInfo) =
+  let typeSym = ident(ctor.typeName)
+  let fieldName = ident(ctor.fieldName)
+  let getter = quote do:
+    proc get(container: `containerType`, _: type `typeSym`): auto = 
+      return container.`fieldName`
+  mainList.add(getter)
+
+proc createGetters(mainList: NimNode, containerType: NimNode, ctors: seq[CtorInfo]) = 
+  for ctor in ctors:
+    if ctor.hasInstanceLifestyle:
+      createFieldGetter(mainList, containerType, ctor)
+    # else:
+    #   let typeSym = ident(ctor.typeName)
+    #   let getter = quote do:
+    #     proc get(container: `containerType`, _: type `typeSym`): string = 
+    #       "A"
+    #   mainList.add(getter)
+
+proc createContainerCall(mainList: NimNode, containerType: NimNode) =
+  mainList.add(
+    quote do:
+      `containerType`()
+  )
 
 # </Emission>
 
@@ -191,25 +225,29 @@ macro CreateContainer(installers: typed, newProcTypes: typed): untyped =
     echo $info
 
   # Emit the container
+
+  var mainList = newStmtList()
   let containerType = genSym(NimSymKind.nskType, "Container")
-  let containerBody = quote do:
-    type
-      `containerType` = ref object
 
-  createInstanceFields(containerBody, ctorInfos)
+  createContainerTypeDef(mainList, containerType, ctorInfos)
 
+  createGetters(mainList, containerType, ctorInfos)
 
+  createContainerCall(mainList, containerType)
 
-  result = quote do:
-    `containerBody`
+  # let doing = quote do:
+  #   proc get(container: `containerType`, _: type Application): Application = 
+  #     "A"
 
-    proc get(): string =
-      "A"
-    
-    `containerType`() 
+  # echo ""
+  # echo "think:"
+  # echo doing.treeRepr
 
+  echo ""
+  echo ""
   echo "result:"
-  echo result.treeRepr
+  echo mainList.treeRepr
+  mainList
 
 echo "actual running:"
 
