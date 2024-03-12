@@ -24,7 +24,7 @@ proc findCtorOfType(ctors: seq[CtorInfo], tName: string): CtorInfo =
   for ctor in ctors:
     if ctor.typeName == tName:
       return ctor
-  raiseAssert("(Jigsaw-IoC internal error) Unable to find CtorInfo by name: " & tName)
+  raiseAssert("Unable to find component by name: '" & tName & "'. Has it been registered?")
 
 proc `$`*(info: CtorInfo): string =
   let ls = case info.lifestyle:
@@ -60,8 +60,9 @@ template getLifestyleForPragmas(typeName: string, pragmas: typed): Lifestyle =
   else:
     raiseAssert("Invalid lifestyle specification for '" & typeName & "'. Please specify one of {.transient.} OR {.singleton.} OR {.instance.}")
 
-template getCtorInfoForType(compType: typed, newProcTypes: typed): CtorInfo = 
+proc getCtorInfoForType(compType: NimNode, newProcTypes: NimNode): CtorInfo = 
   let typeName = compType.strVal
+
   var
     name = ""
     args:seq[string] = @[]
@@ -75,15 +76,21 @@ template getCtorInfoForType(compType: typed, newProcTypes: typed): CtorInfo =
       formalParams = procDef.findChild(it.kind == nnkFormalParams)
       pragmas = procDef.findChild(it.kind == nnkPragma)
     
-    if formalParams[0].kind == nnkSym and $(formalParams[0].strVal) == typeName:
-      name = typeName
-      lifestyle = getLifestyleForPragmas(name, pragmas)
+    if formalParams[1].kind == nnkIdentDefs:
+      let identDefs = formalParams[1]
 
-      for fparam in formalParams:
-        if fparam.kind == nnkIdentDefs:
-          if fparam[1].kind == nnkSym and
-            fparam[2].kind == nnkEmpty:
-            args.add($fparam[1].strVal)
+      if identDefs[1].kind == nnkCommand:
+        let command = identDefs[1]
+
+        if command[1].kind == nnkIdent and $(command[1].strVal) == typeName:
+          name = typeName
+          lifestyle = getLifestyleForPragmas(name, pragmas)
+
+          for fparam in formalParams:
+            if fparam.kind == nnkIdentDefs:
+              if fparam[1].kind == nnkSym and
+                fparam[2].kind == nnkEmpty:
+                args.add($fparam[1].strVal)
 
   CtorInfo(
     typeName: name,
@@ -278,10 +285,5 @@ macro CreateContainer*(installers: typed, newProcTypes: typed): untyped =
   createInitializer(mainList, containerType, newProcTypes, ctorInfos)
 
   createContainerCall(mainList, containerType)
-
-  # echo ""
-  # echo mainList.treeRepr
-  # echo ""
-  
 
   mainList

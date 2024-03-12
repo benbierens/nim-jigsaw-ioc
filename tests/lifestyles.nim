@@ -12,7 +12,7 @@ type
 proc new*(T: type Application, db: Database): Application {.transient.} =
   Application()
 
-proc new*(T: type Database): Database {.singleton.} =
+proc new*(T: type Database): T {.singleton.} =
   Database()
 
 suite "Lifestyles":
