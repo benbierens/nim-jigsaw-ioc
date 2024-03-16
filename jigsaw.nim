@@ -2,6 +2,7 @@ import macros, strutils, algorithm
 
 type
   Lifestyle* = enum
+    Unspecified
     Transient
     Singleton
     Instance
@@ -49,23 +50,20 @@ proc fieldName(info: CtorInfo): string =
 proc hasInstanceLifestyle(info: CtorInfo): bool =
   info.lifestyle == Lifestyle.Singleton or info.lifestyle == Lifestyle.Instance
 
-template getLifestyleForPragmas(typeName: string, pragmas: typed): Lifestyle = 
-  let
-    isTransient = pragmas.findChild(it.kind == nnkSym and $(it.strVal) == "transient") != nil
-    isSingleton = pragmas.findChild(it.kind == nnkSym and $(it.strVal) == "singleton") != nil
-    isInstance = pragmas.findChild(it.kind == nnkSym and $(it.strVal) == "instance") != nil
+proc getLifestyleForSym(typeName: string, lifestyleSym: NimNode): Lifestyle = 
+  let str = lifestyleSym.strVal
 
-  if isTransient and not isSingleton and not isInstance:
-    Lifestyle.Transient
-  elif not isTransient and isSingleton and not isInstance:
-    Lifestyle.Singleton
-  elif not isTransient and not isSingleton and isInstance:
-    Lifestyle.Instance
-  else:
-    raiseAssert("Invalid lifestyle specification for '" & typeName & "'. Please specify one of {.transient.} OR {.singleton.} OR {.instance.}")
+  if str == "Transient":
+    return Lifestyle.Transient
+  if str == "Singleton":
+    return Lifestyle.Singleton
+  if str == "Instance":
+    return Lifestyle.Instance
 
-proc getCtorInfoForType(compType: NimNode, newProcTypes: NimNode): CtorInfo = 
-  let typeName = compType.strVal
+  raiseAssert("Invalid lifestyle specification for '" & typeName & "'.")
+
+proc getCtorInfoForType(componentSym: NimNode, lifestyleSym: NimNode, newProcTypes: NimNode): CtorInfo = 
+  let typeName = componentSym.strVal
 
   var
     name = ""
@@ -78,7 +76,6 @@ proc getCtorInfoForType(compType: NimNode, newProcTypes: NimNode): CtorInfo =
 
     let
       formalParams = procDef.findChild(it.kind == nnkFormalParams)
-      pragmas = procDef.findChild(it.kind == nnkPragma)
     
     if formalParams[1].kind == nnkIdentDefs:
       let identDefs = formalParams[1]
@@ -88,7 +85,7 @@ proc getCtorInfoForType(compType: NimNode, newProcTypes: NimNode): CtorInfo =
 
         if command[1].kind == nnkIdent and $(command[1].strVal) == typeName:
           name = typeName
-          lifestyle = getLifestyleForPragmas(name, pragmas)
+          lifestyle = getLifestyleForSym(typeName, lifestyleSym)
 
           for fparam in formalParams:
             if fparam.kind == nnkIdentDefs:
@@ -103,12 +100,23 @@ proc getCtorInfoForType(compType: NimNode, newProcTypes: NimNode): CtorInfo =
     orderNumber: -1
   )
 
+proc getCtorInfoFromRegistration(objConst: NimNode, newProcTypes: NimNode): CtorInfo =
+  assert objConst[0].kind == nnkBracketExpr
+  assert objConst[1].kind == nnkExprColonExpr
+
+  return getCtorInfoForType(
+    objConst[0][1],
+    # todo: implement-types
+    objConst[1][1],
+    newProcTypes
+  )
+
 template getCtorInfosFromInstaller(installer: typed, newProcTypes: typed): seq[CtorInfo] =
   var ctors = newSeq[CtorInfo]()
 
   assert installer[1].kind == nnkTupleConstr
-  for compType in installer[1]:
-    let info = getCtorInfoForType(compType, newProcTypes)
+  for registrationType in installer[1]:
+    let info = getCtorInfoFromRegistration(registrationType, newProcTypes)
     if info.typeName.len > 0:
       ctors.add(info)
 

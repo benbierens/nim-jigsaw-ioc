@@ -20,7 +20,7 @@ suite "Lifestyles":
     let container = CreateContainer([
         Installer[(
           Registration[Application, ()](lifestyle: Transient),
-          Registration[Database, ()](lifestyle: Singleton)
+          Reg[Database, ()](lifestyle: Singleton)
         )]
       ], new)
 
