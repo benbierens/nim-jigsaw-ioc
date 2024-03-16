@@ -9,22 +9,28 @@ type
   Database = ref object
     state: int
 
-proc new*(T: type Application, db: Database): Application =
+  Config = ref object
+    state: int
+
+proc new*(T: type Application, db: Database, c: Config): Application =
   Application(state: 1)
 
-proc new*(T: type Database): T =
+proc new*(T: type Database, c: Config): T =
   Database(state: 1)
 
 suite "Lifestyles":
   setup:
-    let container = CreateContainer([
+    let
+      config = Config(state: 2) 
+      container = CreateContainer([
         Installer[(
           Registration[Application, ()](lifestyle: Transient),
-          Reg[Database, ()](lifestyle: Singleton)
+          Registration[Database, ()](lifestyle: Singleton),
+          Registration[Config, ()](lifestyle: Instance)
         )]
       ], new)
 
-    container.initialize()
+    container.initialize(config)
 
   test "Can resolve database":
     let db = container.get(Database)
@@ -61,3 +67,21 @@ suite "Lifestyles":
 
     check:
       newApp.state == 1
+
+  test "Can resolve Config":
+    let c = container.get(Config)
+
+    check:
+      c.state == 2
+
+  test "Config lifestyle is instance-singleton":
+    let
+      value = 12
+      c = container.get(Config)
+
+    c.state = value
+
+    let newConfig = container.get(Config)
+
+    check:
+      newConfig.state == value

@@ -12,6 +12,7 @@ type
     foreignArgs: seq[string]
     lifestyle: Lifestyle
     orderNumber: int
+    instanceParamSym: NimNode
 
   Installer*[TRegistrations] = object
     registrations: TRegistrations
@@ -63,13 +64,23 @@ proc getLifestyleForSym(typeName: string, lifestyleSym: NimNode): Lifestyle =
   raiseAssert("Invalid lifestyle specification for '" & typeName & "'.")
 
 proc getCtorInfoForType(componentSym: NimNode, lifestyleSym: NimNode, newProcTypes: NimNode): CtorInfo = 
-  let typeName = componentSym.strVal
+  let
+    typeName = componentSym.strVal
+    lifestyle = getLifestyleForSym(typeName, lifestyleSym)
 
-  var
-    name = ""
-    args:seq[string] = @[]
-    lifestyle: Lifestyle
+  # instance-lifestyle components don't require a newProc,
+  # and their arguments don't need to be inspected.
+  if lifestyle == Lifestyle.Instance:
+    return CtorInfo(
+      typeName: typeName,
+      foreignArgs: @[],
+      lifestyle: lifestyle,
+      orderNumber: -1,
+      instanceParamSym: genSym(NimSymKind.nskParam, typeName.toLowerAscii)
+    )
 
+  # for transient and instance components, we need to find their newProc,
+  # and find their non-defaulted arguments.
   for newProcType in newProcTypes:
     let procDef = newProcType.getImpl
     assert procDef.kind == nnkProcDef, "(Jigsaw-IoC internal error) getCtorInfoForType: Symbol not a procedure"
@@ -84,20 +95,22 @@ proc getCtorInfoForType(componentSym: NimNode, lifestyleSym: NimNode, newProcTyp
         let command = identDefs[1]
 
         if command[1].kind == nnkIdent and $(command[1].strVal) == typeName:
-          name = typeName
-          lifestyle = getLifestyleForSym(typeName, lifestyleSym)
-
+          var args: seq[string] = @[]
           for fparam in formalParams:
             if fparam.kind == nnkIdentDefs:
               if fparam[1].kind == nnkSym and
                 fparam[2].kind == nnkEmpty:
                 args.add($fparam[1].strVal)
 
+          return CtorInfo(
+            typeName: typeName,
+            foreignArgs: args,
+            lifestyle: lifestyle,
+            orderNumber: -1
+          )
+
   CtorInfo(
-    typeName: name,
-    foreignArgs: args,
-    lifestyle: lifestyle,
-    orderNumber: -1
+    typeName: "",
   )
 
 proc getCtorInfoFromRegistration(objConst: NimNode, newProcTypes: NimNode): CtorInfo =
@@ -239,25 +252,59 @@ proc createContainerCall(mainList: NimNode, containerType: NimNode) =
 
 # <Initialization>
 
+proc createSingletonAssignment(containerSym: NimNode, fieldIdent: NimNode, typeSym: NimNode, newProcTypes: NimNode): NimNode =
+  return quote do:
+    `containerSym`.`fieldIdent` = `typeSym`.`newProcTypes`()
+
+proc createInstanceAssignment(containerSym: NimNode, fieldIdent: NimNode, ctor: CtorInfo): NimNode =
+  let instanceParam = ctor.instanceParamSym
+  return quote do:
+    `containerSym`.`fieldIdent` = `instanceParam`
+
+proc createAssignment(containerSym: NimNode, fieldIdent: NimNode, typeSym: NimNode, newProcTypes: NimNode, ctor: CtorInfo): NimNode =
+  if ctor.lifestyle == Lifestyle.Singleton:
+    return createSingletonAssignment(containerSym, fieldIdent, typeSym, newProcTypes)
+  if ctor.lifestyle == Lifestyle.Instance:
+    return createInstanceAssignment(containerSym, fieldIdent, ctor)
+  raiseAssert("(Jigsaw-IoC internal error) unknown instance-type lifestyle.")
+
 proc createInitializeAssignment(assignments: NimNode, containerSym: NimNode, newProcTypes: NimNode, ctor: CtorInfo) =
   let 
     typeSym = ident(ctor.typeName)
     fieldIdent = ident(ctor.fieldName)
 
-  let assignment = quote do:
-    `containerSym`.`fieldIdent` = `typeSym`.`newProcTypes`()
+  let assignment = createAssignment(
+    containerSym,
+    fieldIdent,
+    typeSym,
+    newProcTypes,
+    ctor
+  )
 
   let assignCall = assignment.findChild(it.kind == nnkCall)
   assignCall.addDependencyGetCalls(containerSym, ctor)
 
   assignments.add(assignment)
 
+proc addInstanceParams(formalParams: NimNode, ctors: seq[CtorInfo]) =
+  for ctor in ctors:
+    if ctor.lifestyle == Lifestyle.Instance:
+      formalParams.add(
+        newIdentDefs(
+          ctor.instanceParamSym,
+          ident(ctor.typeName)
+        )
+      )
+
 proc createInitializer(mainList: NimNode, containerType: NimNode, newProcTypes: NimNode, ctors: seq[CtorInfo]) =
   let
     containerSym = genSym(NimSymKind.nskParam, "container")
     containerInit = quote do:
-      proc initialize(`containerSym`: `containerType`)# =
-        # `containerSym`.field = "value"
+      proc initialize(`containerSym`: `containerType`)
+
+    formalParams = containerInit.findChild(it.kind == nnkFormalParams)
+
+  addInstanceParams(formalParams, ctors)
 
   var assignments = newStmtList()
   for ctor in ctors:
