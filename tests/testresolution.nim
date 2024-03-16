@@ -19,34 +19,38 @@ type
   SecondLoop2 = ref object
   SecondLoop3 = ref object
 
-proc new*(T: type ComponentA): T {.transient.} =
+proc new*(T: type ComponentA): T =
   ComponentA(state: 1)
 
-proc new*(T: type ComponentB, a: ComponentA): T {.transient.} =
+proc new*(T: type ComponentB, a: ComponentA): T =
   ComponentB(state: a.state + 1)
 
-proc new*(T: type ComponentC, b: ComponentB): T {.transient.} =
+proc new*(T: type ComponentC, b: ComponentB): T =
   ComponentC(state: b.state + 1)
 
-proc new*(T: type FirstLoop1, l: FirstLoop2): T {.transient.} =
+proc new*(T: type FirstLoop1, l: FirstLoop2): T =
   FirstLoop1()
 
-proc new*(T: type FirstLoop2, l: FirstLoop1): T {.transient.} =
+proc new*(T: type FirstLoop2, l: FirstLoop1): T =
   FirstLoop2()
 
-proc new*(T: type SecondLoop1, l: SecondLoop2): T {.transient.} =
+proc new*(T: type SecondLoop1, l: SecondLoop2): T =
   SecondLoop1()
   
-proc new*(T: type SecondLoop2, l: SecondLoop3): T {.transient.} =
+proc new*(T: type SecondLoop2, l: SecondLoop3): T =
   SecondLoop2()
   
-proc new*(T: type SecondLoop3, l: SecondLoop1): T {.transient.} =
+proc new*(T: type SecondLoop3, l: SecondLoop1): T =
   SecondLoop3()
 
 suite "Resolution":
   setup:
     let container = CreateContainer([
-      Installer[(ComponentA, ComponentB, ComponentC)]
+      Installer[(
+        Registration[ComponentA, ()](lifestyle: Transient),
+        Registration[ComponentB, ()](lifestyle: Transient),
+        Registration[ComponentC, ()](lifestyle: Transient)
+      )]
     ], new)
 
     container.initialize()
@@ -62,16 +66,23 @@ suite "Resolution":
       b.state == 2
       c.state == 3
 
-# How to test:
+# # How to test:
 #   test "Can detect first-order dependency loops":
 #     expect AssertionDefect:
 #       let container = CreateContainer([
-#         Installer[(FirstLoop1, FirstLoop2)]
+#         Installer[(
+#           Registration[FirstLoop1, ()](lifestyle: Transient),
+#           Registration[FirstLoop2, ()](lifestyle: Transient)
+#         )]
 #       ], new)
 
 #   test "Can detect second-order dependency loops":
 #     expect AssertionDefect:
 #       let container = CreateContainer([
-#         Installer[(SecondLoop1, SecondLoop2, SecondLoop3)]
+#         Installer[(
+#           Registration[SecondLoop1, ()](lifestyle: Transient),
+#           Registration[SecondLoop2, ()](lifestyle: Transient),
+#           Registration[SecondLoop3, ()](lifestyle: Transient)
+#         )]
 #       ], new)
 

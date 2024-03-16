@@ -1,10 +1,7 @@
 import macros, strutils, algorithm
-import "./lifestyles"
-
-export lifestyles
 
 type
-  Lifestyle = enum
+  Lifestyle* = enum
     Transient
     Singleton
     Instance
@@ -15,8 +12,15 @@ type
     lifestyle: Lifestyle
     orderNumber: int
 
-  Installer*[TComponents] = object
-    components: TComponents
+  Installer*[TRegistrations] = object
+    registrations: TRegistrations
+  Inst* = Installer
+
+  Registration*[TComponent, TImplements] = object
+    component: TComponent
+    lifestyle*: Lifestyle
+    implements: TImplements
+  Reg* = Registration
 
 # <Ctor inspection>
 

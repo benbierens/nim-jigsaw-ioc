@@ -9,16 +9,19 @@ type
   Database = ref object
     state: int
 
-proc new*(T: type Application, db: Database): Application {.transient.} =
+proc new*(T: type Application, db: Database): Application =
   Application(state: 1)
 
-proc new*(T: type Database): T {.singleton.} =
+proc new*(T: type Database): T =
   Database(state: 1)
 
 suite "Lifestyles":
   setup:
     let container = CreateContainer([
-        Installer[(Application, Database)]
+        Installer[(
+          Registration[Application, ()](lifestyle: Transient),
+          Registration[Database, ()](lifestyle: Singleton)
+        )]
       ], new)
 
     container.initialize()
