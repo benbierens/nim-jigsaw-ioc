@@ -10,10 +10,10 @@ type
     state: int
 
 proc new*(T: type Application, db: Database): Application {.transient.} =
-  Application()
+  Application(state: 1)
 
 proc new*(T: type Database): T {.singleton.} =
-  Database()
+  Database(state: 1)
 
 suite "Lifestyles":
   setup:
@@ -27,7 +27,7 @@ suite "Lifestyles":
     let db = container.get(Database)
 
     check:
-      db.state == 0
+      db.state == 1
 
   test "Database lifestyle is singleton":
     let
@@ -45,7 +45,7 @@ suite "Lifestyles":
     let app = container.get(Application)
 
     check:
-      app.state == 0
+      app.state == 1
 
   test "Application lifestyle is transient":
     let
@@ -57,4 +57,4 @@ suite "Lifestyles":
     let newApp = container.get(Application)
 
     check:
-      newApp.state == 0
+      newApp.state == 1
