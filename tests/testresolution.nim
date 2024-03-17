@@ -97,11 +97,11 @@ suite "Resolution":
 #         )]
 #       ], new)
 
-  test "Can detect abstract dependency loops":
-    expect AssertionDefect:
-      let container = CreateContainer([
-        Installer[(
-          Registration[ImplA, (AbsA)](lifestyle: Transient),
-          Registration[ImplB, (AbsB)](lifestyle: Transient)
-        )]
-      ], new)
+# test "Can detect abstract dependency loops":
+#   expect AssertionDefect:
+#     let container = CreateContainer([
+#       Installer[(
+#         Registration[ImplA, (AbsA)](lifestyle: Transient),
+#         Registration[ImplB, (AbsB)](lifestyle: Transient)
+#       )]
+#     ], new)

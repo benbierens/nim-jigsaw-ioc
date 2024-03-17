@@ -31,6 +31,8 @@ proc findCtorOfType(ctors: seq[CtorInfo], tName: string): CtorInfo =
   for ctor in ctors:
     if ctor.typeName == tName:
       return ctor
+    if tName in ctor.abstracts:
+      return ctor
   raiseAssert("Unable to find component by name: '" & tName & "'. Has it been registered?")
 
 proc `$`*(info: CtorInfo): string =
@@ -181,21 +183,23 @@ template getCtorInfosFromInstaller(installer: typed, newProcTypes: typed): seq[C
 
 # <Loop detection>
 
-proc ensureNoLoop(path: string, ctors: seq[CtorInfo], here: CtorInfo, visited: seq[string]) = 
+proc ensureNoLoop(path: string, ctors: seq[CtorInfo], here: CtorInfo, hereByName: string, visited: seq[string]) = 
   if here.typeName in visited:
-    raiseAssert("Dependency loop detected: " & path & " -> " & here.typeName)
+    raiseAssert("Dependency loop detected: " & path & " -> " & hereByName)
   
   var newVisited = newSeq[string]()
   for v in visited:
     newVisited.add(v)
   newVisited.add(here.typeName)
+  for abs in here.abstracts:
+    newVisited.add(abs)
 
   for fa in here.foreignArgs:
-    ensureNoLoop(path & "/" & here.typeName, ctors, ctors.findCtorOfType(fa), newVisited)
+    ensureNoLoop(path & "/" & hereByName, ctors, ctors.findCtorOfType(fa), fa, newVisited)
 
 proc ensureNoLoops(ctors: seq[CtorInfo]) = 
   for ctor in ctors:
-    ensureNoLoop("", ctors, ctor, newSeq[string]())
+    ensureNoLoop("", ctors, ctor, ctor.typeName, newSeq[string]())
 
 # </Loop detection>
 
