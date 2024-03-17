@@ -19,6 +19,11 @@ type
   SecondLoop2 = ref object
   SecondLoop3 = ref object
 
+  AbsA = ref object of RootObj
+  ImplA = ref object of AbsA
+  AbsB = ref object of RootObj
+  ImplB = ref object of AbsB
+
 proc new*(T: type ComponentA): T =
   ComponentA(state: 1)
 
@@ -42,6 +47,12 @@ proc new*(T: type SecondLoop2, l: SecondLoop3): T =
   
 proc new*(T: type SecondLoop3, l: SecondLoop1): T =
   SecondLoop3()
+
+proc new*(T: type ImplA, l: AbsB): T =
+  ImplA()
+
+proc new*(T: type ImplB, l: AbsA): T =
+  ImplB()
 
 suite "Resolution":
   setup:
@@ -86,3 +97,11 @@ suite "Resolution":
 #         )]
 #       ], new)
 
+  test "Can detect abstract dependency loops":
+    expect AssertionDefect:
+      let container = CreateContainer([
+        Installer[(
+          Registration[ImplA, (AbsA)](lifestyle: Transient),
+          Registration[ImplB, (AbsB)](lifestyle: Transient)
+        )]
+      ], new)
