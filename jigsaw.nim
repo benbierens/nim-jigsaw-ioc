@@ -35,6 +35,8 @@ proc findCtorOfType(ctors: seq[CtorInfo], tName: string): CtorInfo =
 
 proc `$`*(info: CtorInfo): string =
   let ls = case info.lifestyle:
+    of Lifestyle.Unspecified:
+      "(!)"
     of Lifestyle.Transient:
       "(t)"
     of Lifestyle.Singleton:
@@ -71,15 +73,16 @@ proc getLifestyleForSym(typeName: string, lifestyleSym: NimNode): Lifestyle =
 
   raiseAssert("Invalid lifestyle specification for '" & typeName & "'.")
 
-proc getAbstractsFromSym(componentSym: NimNode): seq[string] = 
-  echo ""
-  echo "getting abstracts from:"
-  echo componentSym.treeRepr
-  echo ""
+proc getAbstractsFromSym(abstractsSym: NimNode): seq[string] = 
+  var abstracts = newSeq[string]()
 
-  if componentSym.kind == nnkSym:
-    return @[componentSym.strVal]
-  return @[]
+  if abstractsSym.kind == nnkSym:
+    abstracts.add(abstractsSym.strVal)
+  if abstractsSym.kind == nnkTupleConstr:
+    for child in abstractsSym:
+      abstracts.add(child.strVal)
+
+  return abstracts
 
 proc getCtorInfoForType(
   componentSym: NimNode,
@@ -133,9 +136,11 @@ proc getCtorInfoForType(
             abstracts: getAbstractsFromSym(abstractsSym)
           )
 
-  CtorInfo(
-    typeName: ""
-  )
+  raiseAssert("(Jigsaw-IoC) Failed to find new-proc '" &
+    newProcTypes.treeRepr & 
+    "' for type '" &
+    typeName &
+    "'.")
 
 proc getCtorInfoFromRegistration(objConst: NimNode, newProcTypes: NimNode): CtorInfo =
   assert objConst[0].kind == nnkBracketExpr
@@ -148,7 +153,6 @@ proc getCtorInfoFromRegistration(objConst: NimNode, newProcTypes: NimNode): Ctor
     newProcTypes
   )
 
-  echo "gotInfo: " & $info
 
   return info
 
@@ -274,7 +278,6 @@ proc createTransientGetter(mainList: NimNode, containerType: NimNode, newProcTyp
   mainList.add(getter)
 
 proc createAbstractGetter(mainList: NimNode, containerType: NimNode, ctor: CtorInfo, abstract: string) =
-  echo "creating getter for abstract: " & abstract
   let
     typeSym = ident(abstract)
     typeName = ident(ctor.typeName)
@@ -282,8 +285,6 @@ proc createAbstractGetter(mainList: NimNode, containerType: NimNode, ctor: CtorI
       proc get(container: `containerType`, _: type `typeSym`): auto = 
         return container.get(`typeName`)
 
-  echo "it is:"
-  echo getter.treeRepr
 
   mainList.add(getter)
 

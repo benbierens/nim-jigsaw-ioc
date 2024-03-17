@@ -8,16 +8,16 @@ type
 
 const LaserBlasterName = "Blaster!"
 
+proc abstract() =
+  raiseAssert("Abstract method called.")
+
 proc new*(T: type LaserBlaster): T =
   LaserBlaster()
 
-method getName(item: Item): string {.base.} =
-  raiseAssert("Abstract method called.")
+method getName(item: Item): string {.base.} = abstract()
+method getName(laserBlaster: LaserBlaster): string = LaserBlasterName
 
-method getName(laserBlaster: LaserBlaster): string =
-  LaserBlasterName
-
-suite "Abstraction":
+suite "Abstraction (Single)":
   setup:
     let
       container = CreateContainer([
