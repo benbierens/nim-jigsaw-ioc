@@ -13,6 +13,7 @@ type
     lifestyle: Lifestyle
     orderNumber: int
     instanceParamSym: NimNode
+    abstracts: seq[string]
 
   Installer*[TRegistrations] = object
     registrations: TRegistrations
@@ -43,7 +44,14 @@ proc `$`*(info: CtorInfo): string =
     else:
       raiseAssert("Unknown lifestyle type: " & $info.lifestyle)
 
-  "CtorInfo" & ls & "(" & $info.orderNumber & ")[Name: " & info.typeName & " - ForeignArgs: " & info.foreignArgs.join(",") & "]"
+  "CtorInfo" & ls &
+    "(" & $info.orderNumber &
+    "){Name: " & info.typeName &
+    " - ForeignArgs: [" &
+    info.foreignArgs.join(",") &
+    "] - Abstracts: [" &
+    info.abstracts.join(",") &
+    "]}"
 
 proc fieldName(info: CtorInfo): string =
   "instance" & info.typeName
@@ -63,7 +71,21 @@ proc getLifestyleForSym(typeName: string, lifestyleSym: NimNode): Lifestyle =
 
   raiseAssert("Invalid lifestyle specification for '" & typeName & "'.")
 
-proc getCtorInfoForType(componentSym: NimNode, lifestyleSym: NimNode, newProcTypes: NimNode): CtorInfo = 
+proc getAbstractsFromSym(componentSym: NimNode): seq[string] = 
+  echo ""
+  echo "getting abstracts from:"
+  echo componentSym.treeRepr
+  echo ""
+
+  if componentSym.kind == nnkSym:
+    return @[componentSym.strVal]
+  return @[]
+
+proc getCtorInfoForType(
+  componentSym: NimNode,
+  abstractsSym: NimNode,
+  lifestyleSym: NimNode,
+  newProcTypes: NimNode): CtorInfo = 
   let
     typeName = componentSym.strVal
     lifestyle = getLifestyleForSym(typeName, lifestyleSym)
@@ -76,10 +98,11 @@ proc getCtorInfoForType(componentSym: NimNode, lifestyleSym: NimNode, newProcTyp
       foreignArgs: @[],
       lifestyle: lifestyle,
       orderNumber: -1,
-      instanceParamSym: genSym(NimSymKind.nskParam, typeName.toLowerAscii)
+      instanceParamSym: genSym(NimSymKind.nskParam, typeName.toLowerAscii),
+      abstracts: getAbstractsFromSym(abstractsSym)
     )
 
-  # for transient and instance components, we need to find their newProc,
+  # for transient and singleton components, we need to find their newProc,
   # and find their non-defaulted arguments.
   for newProcType in newProcTypes:
     let procDef = newProcType.getImpl
@@ -106,32 +129,47 @@ proc getCtorInfoForType(componentSym: NimNode, lifestyleSym: NimNode, newProcTyp
             typeName: typeName,
             foreignArgs: args,
             lifestyle: lifestyle,
-            orderNumber: -1
+            orderNumber: -1,
+            abstracts: getAbstractsFromSym(abstractsSym)
           )
 
   CtorInfo(
-    typeName: "",
+    typeName: ""
   )
 
 proc getCtorInfoFromRegistration(objConst: NimNode, newProcTypes: NimNode): CtorInfo =
   assert objConst[0].kind == nnkBracketExpr
   assert objConst[1].kind == nnkExprColonExpr
 
-  return getCtorInfoForType(
+  let info = getCtorInfoForType(
     objConst[0][1],
-    # todo: implement-types
+    objConst[0][2],
     objConst[1][1],
     newProcTypes
   )
 
+  echo "gotInfo: " & $info
+
+  return info
+
 template getCtorInfosFromInstaller(installer: typed, newProcTypes: typed): seq[CtorInfo] =
   var ctors = newSeq[CtorInfo]()
 
-  assert installer[1].kind == nnkTupleConstr
-  for registrationType in installer[1]:
-    let info = getCtorInfoFromRegistration(registrationType, newProcTypes)
+  if installer[1].kind == nnkObjConstr:
+    # Single registration in installer
+    let info = getCtorInfoFromRegistration(installer[1], newProcTypes)
     if info.typeName.len > 0:
-      ctors.add(info)
+        ctors.add(info)
+
+  elif installer[1].kind == nnkTupleConstr:
+    # Multiple registrations in installer
+    for registrationType in installer[1]:
+      let info = getCtorInfoFromRegistration(registrationType, newProcTypes)
+      if info.typeName.len > 0:
+        ctors.add(info)
+
+  else:
+    raiseAssert("(Jigsaw-IoC internal error) Unknown registration node-kind. Obj or Tuple supported.")
 
   ctors
 
@@ -235,12 +273,31 @@ proc createTransientGetter(mainList: NimNode, containerType: NimNode, newProcTyp
 
   mainList.add(getter)
 
+proc createAbstractGetter(mainList: NimNode, containerType: NimNode, ctor: CtorInfo, abstract: string) =
+  echo "creating getter for abstract: " & abstract
+  let
+    typeSym = ident(abstract)
+    typeName = ident(ctor.typeName)
+    getter = quote do:
+      proc get(container: `containerType`, _: type `typeSym`): auto = 
+        return container.get(`typeName`)
+
+  echo "it is:"
+  echo getter.treeRepr
+
+  mainList.add(getter)
+
+proc createAbstractGetters(mainList: NimNode, containerType: NimNode, ctor: CtorInfo) =
+  for abstract in ctor.abstracts:
+    createAbstractGetter(mainList, containerType, ctor, abstract)
+
 proc createGetters(mainList: NimNode, containerType: NimNode, newProcTypes: NimNode, ctors: seq[CtorInfo]) = 
   for ctor in ctors:
     if ctor.hasInstanceLifestyle:
       createFieldGetter(mainList, containerType, ctor)
     else:
       createTransientGetter(mainList, containerType, newProcTypes, ctor)
+    createAbstractGetters(mainList, containerType, ctor)
 
 proc createContainerCall(mainList: NimNode, containerType: NimNode) =
   mainList.add(
