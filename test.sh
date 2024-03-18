@@ -1,1 +1,1 @@
-nim c -r tests/lifestyles.nim
+nim c -r tests.nim
