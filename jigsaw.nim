@@ -14,9 +14,11 @@ type
     orderNumber: int
     instanceParamSym: NimNode
     abstracts: seq[string]
+    ctor: NimNode
 
   Installer*[TRegistrations] = object
     registrations: TRegistrations
+    ctor*: typed
   Inst* = Installer
 
   Registration*[TComponent, TImplements] = object
@@ -107,8 +109,11 @@ proc getCtorInfoForType(
       abstracts: getAbstractsFromSym(abstractsSym)
     )
 
-  # for transient and singleton components, we need to find their newProc,
+  # for transient and singleton components, we need to find their ctor procs,
   # and find their non-defaulted arguments.
+  # todo
+  # if multiple ClosedSymChoice 5 "new"
+  # if single sym "globalctor"
   for newProcType in globalCtor:
     let procDef = newProcType.getImpl
     assert procDef.kind == nnkProcDef, "(Jigsaw-IoC internal error) getCtorInfoForType: Symbol not a procedure"
@@ -166,6 +171,8 @@ template getCtorInfosFromInstaller(installer: typed, globalCtor: typed): seq[Cto
     if info.typeName.len > 0:
         ctors.add(info)
 
+  # TODO: single registration with installer-level ctor
+
   elif installer[1].kind == nnkTupleConstr:
     # Multiple registrations in installer
     for registrationType in installer[1]:
@@ -173,7 +180,38 @@ template getCtorInfosFromInstaller(installer: typed, globalCtor: typed): seq[Cto
       if info.typeName.len > 0:
         ctors.add(info)
 
+  elif installer.kind == nnkObjConstr and
+    installer[1].kind == nnkExprColonExpr and
+    installer[1][0].kind == nnkSym and
+    installer[1][0].strVal == "ctor":
+      # Multiple registrations with installer-level ctor
+      let installerLevelCtor = installer[1][1]
+      echo "passing installerlevel ctor: "
+      echo installerLevelCtor.treeRepr
+      for registrationType in installer[0][1]:
+        let info = getCtorInfoFromRegistration(registrationType, installerLevelCtor)
+        if info.typeName.len > 0:
+          ctors.add(info)
+
   else:
+    echo "installer:"
+    echo installer.treeRepr
+    echo ""
+
+# ObjConstr
+#   BracketExpr
+#     Sym "Installer"
+#     TupleConstr
+#       ObjConstr <-- passed to GetFromReg
+#         BracketExpr
+#       ObjConstr <-- passed to GetFromReg
+#         BracketExpr
+#       ObjConstr <-- passed to GetFromReg
+#         BracketExpr
+#   ExprColonExpr
+#     Sym "ctor"
+#     Sym "installerLevelCtor"
+
     raiseAssert("(Jigsaw-IoC internal error) Unknown registration node-kind. Obj or Tuple supported.")
 
   ctors
