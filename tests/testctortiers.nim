@@ -20,10 +20,12 @@ suite "Constructor Tiers":
   setup:
     let
       container = CreateContainer([
-        # Installer[(
-        #   Registration[ComponentA, ()](lifestyle: Transient, ctor: componentLevelCtor),
-        #   Registration[ComponentB, ()](lifestyle: Transient)
-        # )],#(ctor: installerLevelCtor),
+        
+        Installer[(
+          Registration[ComponentA, ()](lifestyle: Transient, ctor: componentLevelCtor),
+          # Registration[ComponentB, ()](lifestyle: Transient)
+        )],#(ctor: installerLevelCtor),
+
         Installer[(
           Registration[ComponentC, ()](lifestyle: Transient)
         )]
@@ -31,11 +33,11 @@ suite "Constructor Tiers":
 
     container.initialize()
 
-  # test "Can resolve with component level constructor":
-  #   let c = container.get(ComponentA)
+  test "Can resolve with component level constructor":
+    let c = container.get(ComponentA)
 
-  #   check:
-  #     c != nil
+    check:
+      c != nil
 
   # test "Can resolve with installer level constructor":
   #   let c = container.get(ComponentB)

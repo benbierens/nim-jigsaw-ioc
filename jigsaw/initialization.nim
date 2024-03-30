@@ -2,23 +2,24 @@ import macros
 import emission
 import types
 
-proc createSingletonAssignment(containerSym: NimNode, fieldIdent: NimNode, typeSym: NimNode, globalCtor: NimNode): NimNode =
+proc createSingletonAssignment(containerSym: NimNode, fieldIdent: NimNode, typeSym: NimNode, ctor: CtorInfo): NimNode =
+  let ctorSym = ctor.ctor
   return quote do:
-    `containerSym`.`fieldIdent` = `typeSym`.`globalCtor`()
+    `containerSym`.`fieldIdent` = `typeSym`.`ctorSym`()
 
 proc createInstanceAssignment(containerSym: NimNode, fieldIdent: NimNode, ctor: CtorInfo): NimNode =
   let instanceParam = ctor.instanceParamSym
   return quote do:
     `containerSym`.`fieldIdent` = `instanceParam`
 
-proc createAssignment(containerSym: NimNode, fieldIdent: NimNode, typeSym: NimNode, globalCtor: NimNode, ctor: CtorInfo): NimNode =
+proc createAssignment(containerSym: NimNode, fieldIdent: NimNode, typeSym: NimNode, ctor: CtorInfo): NimNode =
   if ctor.lifestyle == Lifestyle.Singleton:
-    return createSingletonAssignment(containerSym, fieldIdent, typeSym, globalCtor)
+    return createSingletonAssignment(containerSym, fieldIdent, typeSym, ctor)
   if ctor.lifestyle == Lifestyle.Instance:
     return createInstanceAssignment(containerSym, fieldIdent, ctor)
   raiseAssert("(Jigsaw-IoC internal error) unknown instance-type lifestyle.")
 
-proc createInitializeAssignment(assignments: NimNode, containerSym: NimNode, globalCtor: NimNode, ctor: CtorInfo) =
+proc createInitializeAssignment(assignments: NimNode, containerSym: NimNode, ctor: CtorInfo) =
   let 
     typeSym = ident(ctor.typeName)
     fieldIdent = ident(ctor.fieldName)
@@ -27,7 +28,6 @@ proc createInitializeAssignment(assignments: NimNode, containerSym: NimNode, glo
     containerSym,
     fieldIdent,
     typeSym,
-    globalCtor,
     ctor
   )
 
@@ -46,7 +46,7 @@ proc addInstanceParams(formalParams: NimNode, ctors: seq[CtorInfo]) =
         )
       )
 
-proc createInitializer*(mainList: NimNode, containerType: NimNode, globalCtor: NimNode, ctors: seq[CtorInfo]) =
+proc createInitializer*(mainList: NimNode, containerType: NimNode, ctors: seq[CtorInfo]) =
   let
     containerSym = genSym(NimSymKind.nskParam, "container")
     containerInit = quote do:
@@ -59,7 +59,7 @@ proc createInitializer*(mainList: NimNode, containerType: NimNode, globalCtor: N
   var assignments = newStmtList()
   for ctor in ctors:
     if ctor.hasInstanceLifestyle:
-      createInitializeAssignment(assignments, containerSym, globalCtor, ctor)
+      createInitializeAssignment(assignments, containerSym, ctor)
 
   containerInit[6] = assignments
 

@@ -34,15 +34,16 @@ proc addDependencyGetCalls*(returnCall: NimNode, containerSym: NimNode, ctor: Ct
       `containerSym`.get(`faIdent`)
     )
 
-proc createTransientGetter(mainList: NimNode, containerType: NimNode, globalCtor: NimNode, ctor: CtorInfo) =
+proc createTransientGetter(mainList: NimNode, containerType: NimNode, ctor: CtorInfo) =
   let
     typeSym = ident(ctor.typeName)
     containerSym = genSym(NimSymKind.nskParam, "container")
+    ctorSym = ctor.ctor
 
   let
     getter = quote do:
       proc get(`containerSym`: `containerType`, _: type `typeSym`): auto = 
-        return `typeSym`.`globalCtor`()
+        return `typeSym`.`ctorSym`()
 
   let returnCall = getter.findChild(it.kind == nnkStmtList)[0][0]
   returnCall.addDependencyGetCalls(containerSym, ctor)
@@ -64,14 +65,14 @@ proc createAbstractGetters(mainList: NimNode, containerType: NimNode, ctor: Ctor
   for abstract in ctor.abstracts:
     createAbstractGetter(mainList, containerType, ctor, abstract)
 
-proc createGetters(mainList: NimNode, containerType: NimNode, globalCtor: NimNode, ctors: seq[CtorInfo]) = 
+proc createGetters(mainList: NimNode, containerType: NimNode, ctors: seq[CtorInfo]) = 
   for ctor in ctors:
     if ctor.hasInstanceLifestyle:
       createFieldGetter(mainList, containerType, ctor)
     else:
-      createTransientGetter(mainList, containerType, globalCtor, ctor)
+      createTransientGetter(mainList, containerType, ctor)
     createAbstractGetters(mainList, containerType, ctor)
 
-proc emit*(mainList: NimNode, containerType: NimNode, ctorInfos: seq[CtorInfo], globalCtor: NimNode) = 
+proc emit*(mainList: NimNode, containerType: NimNode, ctorInfos: seq[CtorInfo]) = 
   createContainerTypeDef(mainList, containerType, ctorInfos)
-  createGetters(mainList, containerType, globalCtor, ctorInfos)
+  createGetters(mainList, containerType, ctorInfos)

@@ -33,10 +33,10 @@ macro CreateContainer*(installers: typed, globalCtor: typed): untyped =
   let containerType = genSym(NimSymKind.nskType, "Container")
 
   # Emit the container
-  emit(mainList, containerType, ctorInfos, globalCtor)
+  emit(mainList, containerType, ctorInfos)
 
   # Create the initialize method
-  createInitializer(mainList, containerType, globalCtor, ctorInfos)
+  createInitializer(mainList, containerType, ctorInfos)
 
   # Create a container instance
   createContainerCall(mainList, containerType)

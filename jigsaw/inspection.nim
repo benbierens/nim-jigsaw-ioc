@@ -77,7 +77,8 @@ proc getCtorInfoForTypeForSingleCtorProc(
       foreignArgs: args,
       lifestyle: lifestyle,
       orderNumber: -1,
-      abstracts: getAbstractsFromSym(abstractsSym)
+      abstracts: getAbstractsFromSym(abstractsSym),
+      ctor: ctor
     )
   return CtorInfo()
 
@@ -89,23 +90,9 @@ proc getCtorInfoForTypeForMultipleCtorProcs(
 ): CtorInfo =
   for ctorProc in ctor:
     let info = getCtorInfoForTypeForSingleCtorProc(typeName, lifestyle, ctorProc, abstractsSym)
-    if info.typeName.len != 0:
+    if info.isValid:
       return info
-    # let ctorImpl = ctorProc.getImpl
-    # assert ctorImpl.kind == nnkProcDef, "(Jigsaw-IoC internal error) getCtorInfoForTypeForMultipleCtorProcs: Symbol not a procedure"
-
-    # let formalParams = ctorImpl.findChild(it.kind == nnkFormalParams)
-    
-    # if areCtorParameters(formalParams, typeName):
-    #   var args = getForeignArgs(formalParams)
-      
-    #   return CtorInfo(
-    #     typeName: typeName,
-    #     foreignArgs: args,
-    #     lifestyle: lifestyle,
-    #     orderNumber: -1,
-    #     abstracts: getAbstractsFromSym(abstractsSym)
-    #   )
+  return CtorInfo()
 
 proc getCtorInfoForType(
   componentSym: NimNode,
@@ -127,13 +114,13 @@ proc getCtorInfoForType(
   # Multiple procs 
   if ctor.kind == nnkClosedSymChoice:
     let ctorInfo = getCtorInfoForTypeForMultipleCtorProcs(typeName, lifestyle, ctor, abstractsSym)
-    if ctorInfo.typeName.len != 0:
+    if ctorInfo.isValid:
       return ctorInfo
 
   # Single proc
   if ctor.kind == nnkSym:
     let ctorInfo = getCtorInfoForTypeForSingleCtorProc(typeName, lifestyle, ctor, abstractsSym)
-    if ctorInfo.typeName.len != 0:
+    if ctorInfo.isValid:
       return ctorInfo
 
   raiseAssert("(Jigsaw-IoC) Failed to find ctor '" &
@@ -146,11 +133,17 @@ proc getCtorInfoFromRegistration(objConst: NimNode, ctor: NimNode): CtorInfo =
   assert objConst[0].kind == nnkBracketExpr
   assert objConst[1].kind == nnkExprColonExpr
 
+  var useCtor = ctor
+  if objConst.len == 3 and objConst[2].kind == nnkExprColonExpr:
+    # If a component-level ctor is specified, we use it.
+    echo "using component-level ctor override!"
+    useCtor = objConst[2][1]
+
   let info = getCtorInfoForType(
     objConst[0][1],
     objConst[0][2],
     objConst[1][1],
-    ctor
+    useCtor
   )
 
   return info
@@ -160,51 +153,34 @@ template getCtorInfosFromInstaller*(installer: typed, ctor: typed): seq[CtorInfo
 
   if installer[1].kind == nnkObjConstr:
     # Single registration in installer
+    echo "single"
     let info = getCtorInfoFromRegistration(installer[1], ctor)
-    if info.typeName.len > 0:
+    if info.isValid:
         ctors.add(info)
 
   # TODO: single registration with installer-level ctor
-
+  
   elif installer[1].kind == nnkTupleConstr:
     # Multiple registrations in installer
+    echo "multi"
     for registrationType in installer[1]:
       let info = getCtorInfoFromRegistration(registrationType, ctor)
-      if info.typeName.len > 0:
+      if info.isValid:
         ctors.add(info)
 
   elif installer.kind == nnkObjConstr and
     installer[1].kind == nnkExprColonExpr and
     installer[1][0].kind == nnkSym and
     installer[1][0].strVal == "ctor":
+      echo "multie with ctor"
       # Multiple registrations with installer-level ctor
       let installerLevelCtor = installer[1][1]
-      echo "passing installerlevel ctor: "
-      echo installerLevelCtor.treeRepr
       for registrationType in installer[0][1]:
         let info = getCtorInfoFromRegistration(registrationType, installerLevelCtor)
-        if info.typeName.len > 0:
+        if info.isValid:
           ctors.add(info)
 
   else:
-    echo "installer:"
-    echo installer.treeRepr
-    echo ""
-
-# ObjConstr
-#   BracketExpr
-#     Sym "Installer"
-#     TupleConstr
-#       ObjConstr <-- passed to GetFromReg
-#         BracketExpr
-#       ObjConstr <-- passed to GetFromReg
-#         BracketExpr
-#       ObjConstr <-- passed to GetFromReg
-#         BracketExpr
-#   ExprColonExpr
-#     Sym "ctor"
-#     Sym "installerLevelCtor"
-
     raiseAssert("(Jigsaw-IoC internal error) Unknown registration node-kind. Obj or Tuple supported.")
 
   ctors

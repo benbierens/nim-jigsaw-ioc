@@ -55,3 +55,6 @@ proc fieldName*(info: CtorInfo): string =
 
 proc hasInstanceLifestyle*(info: CtorInfo): bool =
   info.lifestyle == Lifestyle.Singleton or info.lifestyle == Lifestyle.Instance
+
+proc isValid*(info: CtorInfo): bool =
+  info.typeName.len > 0
