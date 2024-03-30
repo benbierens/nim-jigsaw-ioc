@@ -32,6 +32,34 @@ proc getAbstractsFromSym(abstractsSym: NimNode): seq[string] =
 
   return abstracts
 
+proc getInstanceCtorInfo(typeName: string, lifestyle: Lifestyle, abstractsSym: NimNode): CtorInfo =
+  return CtorInfo(
+    typeName: typeName,
+    foreignArgs: @[],
+    lifestyle: lifestyle,
+    orderNumber: -1,
+    instanceParamSym: genSym(NimSymKind.nskParam, typeName.toLowerAscii),
+    abstracts: getAbstractsFromSym(abstractsSym)
+  )
+
+proc areCtorParameters(formalParams: NimNode, typeName: string): bool =
+  if formalParams[1].kind == nnkIdentDefs:
+      let identDefs = formalParams[1]
+      if identDefs[1].kind == nnkCommand:
+        let command = identDefs[1]
+        if command[1].kind == nnkIdent and $(command[1].strVal) == typeName:
+          return true
+  return false
+
+proc getForeignArgs(formalParams: NimNode): seq[string] =
+  var args: seq[string] = @[]
+  for fparam in formalParams:
+    if fparam.kind == nnkIdentDefs:
+      if fparam[1].kind == nnkSym and
+        fparam[2].kind == nnkEmpty:
+        args.add($fparam[1].strVal)
+  return args
+
 proc getCtorInfoForType(
   componentSym: NimNode,
   abstractsSym: NimNode,
@@ -44,14 +72,7 @@ proc getCtorInfoForType(
   # instance-lifestyle components don't require a newProc,
   # and their arguments don't need to be inspected.
   if lifestyle == Lifestyle.Instance:
-    return CtorInfo(
-      typeName: typeName,
-      foreignArgs: @[],
-      lifestyle: lifestyle,
-      orderNumber: -1,
-      instanceParamSym: genSym(NimSymKind.nskParam, typeName.toLowerAscii),
-      abstracts: getAbstractsFromSym(abstractsSym)
-    )
+    return getInstanceCtorInfo(typeName, lifestyle, abstractsSym)
 
   # for transient and singleton components, we need to find their ctor procs,
   # and find their non-defaulted arguments.
@@ -65,27 +86,16 @@ proc getCtorInfoForType(
     let
       formalParams = procDef.findChild(it.kind == nnkFormalParams)
     
-    if formalParams[1].kind == nnkIdentDefs:
-      let identDefs = formalParams[1]
-
-      if identDefs[1].kind == nnkCommand:
-        let command = identDefs[1]
-
-        if command[1].kind == nnkIdent and $(command[1].strVal) == typeName:
-          var args: seq[string] = @[]
-          for fparam in formalParams:
-            if fparam.kind == nnkIdentDefs:
-              if fparam[1].kind == nnkSym and
-                fparam[2].kind == nnkEmpty:
-                args.add($fparam[1].strVal)
-
-          return CtorInfo(
-            typeName: typeName,
-            foreignArgs: args,
-            lifestyle: lifestyle,
-            orderNumber: -1,
-            abstracts: getAbstractsFromSym(abstractsSym)
-          )
+    if areCtorParameters(formalParams, typeName):
+      var args = getForeignArgs(formalParams)
+      
+      return CtorInfo(
+        typeName: typeName,
+        foreignArgs: args,
+        lifestyle: lifestyle,
+        orderNumber: -1,
+        abstracts: getAbstractsFromSym(abstractsSym)
+      )
 
   raiseAssert("(Jigsaw-IoC) Failed to find ctor '" &
     globalCtor.treeRepr & 

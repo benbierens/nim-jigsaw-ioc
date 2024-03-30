@@ -24,6 +24,7 @@ type
   Registration*[TComponent, TImplements] = object
     component*: TComponent
     lifestyle*: Lifestyle
+    ctor*: typed
     implements*: TImplements
   Reg* = Registration
 
