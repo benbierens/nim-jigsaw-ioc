@@ -2,3 +2,4 @@ import tests/testabstractionmultiple
 import tests/testabstractionsingle
 import tests/testlifestyles
 import tests/testresolution
+import tests/testctortiers
