@@ -66,6 +66,19 @@ suite "Resolution":
 
     container.initialize()
 
+  test "Single registration installer":
+    let c = CreateContainer([
+      Installer[(
+        Registration[ComponentA, ()](lifestyle: Transient)
+      )]
+    ], new)
+
+    c.initialize()
+
+    let a = c.get(ComponentA)
+    check:
+      a.state == 1
+
   test "Can resolve components":
     let
       a = container.get(ComponentA)

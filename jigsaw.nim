@@ -90,7 +90,7 @@ proc getCtorInfoForType(
   componentSym: NimNode,
   abstractsSym: NimNode,
   lifestyleSym: NimNode,
-  newProcTypes: NimNode): CtorInfo = 
+  globalCtor: NimNode): CtorInfo = 
   let
     typeName = componentSym.strVal
     lifestyle = getLifestyleForSym(typeName, lifestyleSym)
@@ -109,7 +109,7 @@ proc getCtorInfoForType(
 
   # for transient and singleton components, we need to find their newProc,
   # and find their non-defaulted arguments.
-  for newProcType in newProcTypes:
+  for newProcType in globalCtor:
     let procDef = newProcType.getImpl
     assert procDef.kind == nnkProcDef, "(Jigsaw-IoC internal error) getCtorInfoForType: Symbol not a procedure"
 
@@ -138,13 +138,13 @@ proc getCtorInfoForType(
             abstracts: getAbstractsFromSym(abstractsSym)
           )
 
-  raiseAssert("(Jigsaw-IoC) Failed to find new-proc '" &
-    newProcTypes.treeRepr & 
+  raiseAssert("(Jigsaw-IoC) Failed to find ctor '" &
+    globalCtor.treeRepr & 
     "' for type '" &
     typeName &
     "'.")
 
-proc getCtorInfoFromRegistration(objConst: NimNode, newProcTypes: NimNode): CtorInfo =
+proc getCtorInfoFromRegistration(objConst: NimNode, globalCtor: NimNode): CtorInfo =
   assert objConst[0].kind == nnkBracketExpr
   assert objConst[1].kind == nnkExprColonExpr
 
@@ -152,25 +152,24 @@ proc getCtorInfoFromRegistration(objConst: NimNode, newProcTypes: NimNode): Ctor
     objConst[0][1],
     objConst[0][2],
     objConst[1][1],
-    newProcTypes
+    globalCtor
   )
-
 
   return info
 
-template getCtorInfosFromInstaller(installer: typed, newProcTypes: typed): seq[CtorInfo] =
+template getCtorInfosFromInstaller(installer: typed, globalCtor: typed): seq[CtorInfo] =
   var ctors = newSeq[CtorInfo]()
 
   if installer[1].kind == nnkObjConstr:
     # Single registration in installer
-    let info = getCtorInfoFromRegistration(installer[1], newProcTypes)
+    let info = getCtorInfoFromRegistration(installer[1], globalCtor)
     if info.typeName.len > 0:
         ctors.add(info)
 
   elif installer[1].kind == nnkTupleConstr:
     # Multiple registrations in installer
     for registrationType in installer[1]:
-      let info = getCtorInfoFromRegistration(registrationType, newProcTypes)
+      let info = getCtorInfoFromRegistration(registrationType, globalCtor)
       if info.typeName.len > 0:
         ctors.add(info)
 
@@ -266,7 +265,7 @@ proc addDependencyGetCalls(returnCall: NimNode, containerSym: NimNode, ctor: Cto
       `containerSym`.get(`faIdent`)
     )
 
-proc createTransientGetter(mainList: NimNode, containerType: NimNode, newProcTypes: NimNode, ctor: CtorInfo) =
+proc createTransientGetter(mainList: NimNode, containerType: NimNode, globalCtor: NimNode, ctor: CtorInfo) =
   let
     typeSym = ident(ctor.typeName)
     containerSym = genSym(NimSymKind.nskParam, "container")
@@ -274,7 +273,7 @@ proc createTransientGetter(mainList: NimNode, containerType: NimNode, newProcTyp
   let
     getter = quote do:
       proc get(`containerSym`: `containerType`, _: type `typeSym`): auto = 
-        return `typeSym`.`newProcTypes`()
+        return `typeSym`.`globalCtor`()
 
   let returnCall = getter.findChild(it.kind == nnkStmtList)[0][0]
   returnCall.addDependencyGetCalls(containerSym, ctor)
@@ -296,12 +295,12 @@ proc createAbstractGetters(mainList: NimNode, containerType: NimNode, ctor: Ctor
   for abstract in ctor.abstracts:
     createAbstractGetter(mainList, containerType, ctor, abstract)
 
-proc createGetters(mainList: NimNode, containerType: NimNode, newProcTypes: NimNode, ctors: seq[CtorInfo]) = 
+proc createGetters(mainList: NimNode, containerType: NimNode, globalCtor: NimNode, ctors: seq[CtorInfo]) = 
   for ctor in ctors:
     if ctor.hasInstanceLifestyle:
       createFieldGetter(mainList, containerType, ctor)
     else:
-      createTransientGetter(mainList, containerType, newProcTypes, ctor)
+      createTransientGetter(mainList, containerType, globalCtor, ctor)
     createAbstractGetters(mainList, containerType, ctor)
 
 proc createContainerCall(mainList: NimNode, containerType: NimNode) =
@@ -314,23 +313,23 @@ proc createContainerCall(mainList: NimNode, containerType: NimNode) =
 
 # <Initialization>
 
-proc createSingletonAssignment(containerSym: NimNode, fieldIdent: NimNode, typeSym: NimNode, newProcTypes: NimNode): NimNode =
+proc createSingletonAssignment(containerSym: NimNode, fieldIdent: NimNode, typeSym: NimNode, globalCtor: NimNode): NimNode =
   return quote do:
-    `containerSym`.`fieldIdent` = `typeSym`.`newProcTypes`()
+    `containerSym`.`fieldIdent` = `typeSym`.`globalCtor`()
 
 proc createInstanceAssignment(containerSym: NimNode, fieldIdent: NimNode, ctor: CtorInfo): NimNode =
   let instanceParam = ctor.instanceParamSym
   return quote do:
     `containerSym`.`fieldIdent` = `instanceParam`
 
-proc createAssignment(containerSym: NimNode, fieldIdent: NimNode, typeSym: NimNode, newProcTypes: NimNode, ctor: CtorInfo): NimNode =
+proc createAssignment(containerSym: NimNode, fieldIdent: NimNode, typeSym: NimNode, globalCtor: NimNode, ctor: CtorInfo): NimNode =
   if ctor.lifestyle == Lifestyle.Singleton:
-    return createSingletonAssignment(containerSym, fieldIdent, typeSym, newProcTypes)
+    return createSingletonAssignment(containerSym, fieldIdent, typeSym, globalCtor)
   if ctor.lifestyle == Lifestyle.Instance:
     return createInstanceAssignment(containerSym, fieldIdent, ctor)
   raiseAssert("(Jigsaw-IoC internal error) unknown instance-type lifestyle.")
 
-proc createInitializeAssignment(assignments: NimNode, containerSym: NimNode, newProcTypes: NimNode, ctor: CtorInfo) =
+proc createInitializeAssignment(assignments: NimNode, containerSym: NimNode, globalCtor: NimNode, ctor: CtorInfo) =
   let 
     typeSym = ident(ctor.typeName)
     fieldIdent = ident(ctor.fieldName)
@@ -339,7 +338,7 @@ proc createInitializeAssignment(assignments: NimNode, containerSym: NimNode, new
     containerSym,
     fieldIdent,
     typeSym,
-    newProcTypes,
+    globalCtor,
     ctor
   )
 
@@ -358,7 +357,7 @@ proc addInstanceParams(formalParams: NimNode, ctors: seq[CtorInfo]) =
         )
       )
 
-proc createInitializer(mainList: NimNode, containerType: NimNode, newProcTypes: NimNode, ctors: seq[CtorInfo]) =
+proc createInitializer(mainList: NimNode, containerType: NimNode, globalCtor: NimNode, ctors: seq[CtorInfo]) =
   let
     containerSym = genSym(NimSymKind.nskParam, "container")
     containerInit = quote do:
@@ -371,7 +370,7 @@ proc createInitializer(mainList: NimNode, containerType: NimNode, newProcTypes: 
   var assignments = newStmtList()
   for ctor in ctors:
     if ctor.hasInstanceLifestyle:
-      createInitializeAssignment(assignments, containerSym, newProcTypes, ctor)
+      createInitializeAssignment(assignments, containerSym, globalCtor, ctor)
 
   containerInit[6] = assignments
 
@@ -379,12 +378,12 @@ proc createInitializer(mainList: NimNode, containerType: NimNode, newProcTypes: 
 
 # </Initialization>
 
-macro CreateContainer*(installers: typed, newProcTypes: typed): untyped =
+macro CreateContainer*(installers: typed, globalCtor: typed): untyped =
   var ctorInfos = newSeq[CtorInfo]()
 
   # Inspect installers to create ctorInfo objects.
   for installer in installers:
-    let infos = getCtorInfosFromInstaller(installer, newProcTypes)
+    let infos = getCtorInfosFromInstaller(installer, globalCtor)
     for i in infos:
       ctorInfos.add(i)
 
@@ -401,9 +400,9 @@ macro CreateContainer*(installers: typed, newProcTypes: typed): untyped =
 
   createContainerTypeDef(mainList, containerType, ctorInfos)
 
-  createGetters(mainList, containerType, newProcTypes, ctorInfos)
+  createGetters(mainList, containerType, globalCtor, ctorInfos)
 
-  createInitializer(mainList, containerType, newProcTypes, ctorInfos)
+  createInitializer(mainList, containerType, globalCtor, ctorInfos)
 
   createContainerCall(mainList, containerType)
 
