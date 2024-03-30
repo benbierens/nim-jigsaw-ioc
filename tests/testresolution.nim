@@ -66,6 +66,17 @@ suite "Resolution":
 
     container.initialize()
 
+  test "Can resolve components":
+    let
+      a = container.get(ComponentA)
+      b = container.get(ComponentB)
+      c = container.get(ComponentC)
+
+    check:
+      a.state == 1
+      b.state == 2
+      c.state == 3
+
   test "Single registration installer":
     let c = CreateContainer([
       Installer[(
@@ -79,16 +90,24 @@ suite "Resolution":
     check:
       a.state == 1
 
-  test "Can resolve components":
-    let
-      a = container.get(ComponentA)
-      b = container.get(ComponentB)
-      c = container.get(ComponentC)
+  test "Multiple installers":
+    let c = CreateContainer([
+      Installer[(
+        Registration[ComponentA, ()](lifestyle: Transient)
+      )],
+      Installer[(
+        Registration[ComponentB, ()](lifestyle: Transient)
+      )]
+    ], new)
 
+    c.initialize()
+
+    let
+      a = c.get(ComponentA)
+      b = c.get(ComponentB)
     check:
       a.state == 1
       b.state == 2
-      c.state == 3
 
 # # How to test:
 #   test "Can detect first-order dependency loops":
