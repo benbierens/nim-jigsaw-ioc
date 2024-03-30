@@ -60,11 +60,58 @@ proc getForeignArgs(formalParams: NimNode): seq[string] =
         args.add($fparam[1].strVal)
   return args
 
+proc getCtorInfoForTypeForSingleCtorProc(
+  typeName: string,
+  lifestyle: Lifestyle,
+  ctor: NimNode,
+  abstractsSym: NimNode
+): CtorInfo =
+  let ctorImpl = ctor.getImpl
+  assert ctorImpl.kind == nnkProcDef, "(Jigsaw-IoC internal error) getCtorInfoForTypeForSingleCtorProc: Symbol not a procedure"
+  let formalParams = ctorImpl.findChild(it.kind == nnkFormalParams)
+  
+  if areCtorParameters(formalParams, typeName):
+    var args = getForeignArgs(formalParams)
+    return CtorInfo(
+      typeName: typeName,
+      foreignArgs: args,
+      lifestyle: lifestyle,
+      orderNumber: -1,
+      abstracts: getAbstractsFromSym(abstractsSym)
+    )
+  return CtorInfo()
+
+proc getCtorInfoForTypeForMultipleCtorProcs(
+  typeName: string,
+  lifestyle: Lifestyle,
+  ctor: NimNode,
+  abstractsSym: NimNode
+): CtorInfo =
+  for ctorProc in ctor:
+    let info = getCtorInfoForTypeForSingleCtorProc(typeName, lifestyle, ctorProc, abstractsSym)
+    if info.typeName.len != 0:
+      return info
+    # let ctorImpl = ctorProc.getImpl
+    # assert ctorImpl.kind == nnkProcDef, "(Jigsaw-IoC internal error) getCtorInfoForTypeForMultipleCtorProcs: Symbol not a procedure"
+
+    # let formalParams = ctorImpl.findChild(it.kind == nnkFormalParams)
+    
+    # if areCtorParameters(formalParams, typeName):
+    #   var args = getForeignArgs(formalParams)
+      
+    #   return CtorInfo(
+    #     typeName: typeName,
+    #     foreignArgs: args,
+    #     lifestyle: lifestyle,
+    #     orderNumber: -1,
+    #     abstracts: getAbstractsFromSym(abstractsSym)
+    #   )
+
 proc getCtorInfoForType(
   componentSym: NimNode,
   abstractsSym: NimNode,
   lifestyleSym: NimNode,
-  globalCtor: NimNode): CtorInfo = 
+  ctor: NimNode): CtorInfo = 
   let
     typeName = componentSym.strVal
     lifestyle = getLifestyleForSym(typeName, lifestyleSym)
@@ -76,34 +123,26 @@ proc getCtorInfoForType(
 
   # for transient and singleton components, we need to find their ctor procs,
   # and find their non-defaulted arguments.
-  # todo
-  # if multiple ClosedSymChoice 5 "new"
-  # if single sym "globalctor"
-  for newProcType in globalCtor:
-    let procDef = newProcType.getImpl
-    assert procDef.kind == nnkProcDef, "(Jigsaw-IoC internal error) getCtorInfoForType: Symbol not a procedure"
 
-    let
-      formalParams = procDef.findChild(it.kind == nnkFormalParams)
-    
-    if areCtorParameters(formalParams, typeName):
-      var args = getForeignArgs(formalParams)
-      
-      return CtorInfo(
-        typeName: typeName,
-        foreignArgs: args,
-        lifestyle: lifestyle,
-        orderNumber: -1,
-        abstracts: getAbstractsFromSym(abstractsSym)
-      )
+  # Multiple procs 
+  if ctor.kind == nnkClosedSymChoice:
+    let ctorInfo = getCtorInfoForTypeForMultipleCtorProcs(typeName, lifestyle, ctor, abstractsSym)
+    if ctorInfo.typeName.len != 0:
+      return ctorInfo
+
+  # Single proc
+  if ctor.kind == nnkSym:
+    let ctorInfo = getCtorInfoForTypeForSingleCtorProc(typeName, lifestyle, ctor, abstractsSym)
+    if ctorInfo.typeName.len != 0:
+      return ctorInfo
 
   raiseAssert("(Jigsaw-IoC) Failed to find ctor '" &
-    globalCtor.treeRepr & 
+    ctor.treeRepr & 
     "' for type '" &
     typeName &
     "'.")
 
-proc getCtorInfoFromRegistration(objConst: NimNode, globalCtor: NimNode): CtorInfo =
+proc getCtorInfoFromRegistration(objConst: NimNode, ctor: NimNode): CtorInfo =
   assert objConst[0].kind == nnkBracketExpr
   assert objConst[1].kind == nnkExprColonExpr
 
@@ -111,17 +150,17 @@ proc getCtorInfoFromRegistration(objConst: NimNode, globalCtor: NimNode): CtorIn
     objConst[0][1],
     objConst[0][2],
     objConst[1][1],
-    globalCtor
+    ctor
   )
 
   return info
 
-template getCtorInfosFromInstaller*(installer: typed, globalCtor: typed): seq[CtorInfo] =
+template getCtorInfosFromInstaller*(installer: typed, ctor: typed): seq[CtorInfo] =
   var ctors = newSeq[CtorInfo]()
 
   if installer[1].kind == nnkObjConstr:
     # Single registration in installer
-    let info = getCtorInfoFromRegistration(installer[1], globalCtor)
+    let info = getCtorInfoFromRegistration(installer[1], ctor)
     if info.typeName.len > 0:
         ctors.add(info)
 
@@ -130,7 +169,7 @@ template getCtorInfosFromInstaller*(installer: typed, globalCtor: typed): seq[Ct
   elif installer[1].kind == nnkTupleConstr:
     # Multiple registrations in installer
     for registrationType in installer[1]:
-      let info = getCtorInfoFromRegistration(registrationType, globalCtor)
+      let info = getCtorInfoFromRegistration(registrationType, ctor)
       if info.typeName.len > 0:
         ctors.add(info)
 
