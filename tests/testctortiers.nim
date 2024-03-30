@@ -23,8 +23,8 @@ suite "Constructor Tiers":
         
         Installer[(
           Registration[ComponentA, ()](lifestyle: Transient, ctor: componentLevelCtor),
-          # Registration[ComponentB, ()](lifestyle: Transient)
-        )],#(ctor: installerLevelCtor),
+          Registration[ComponentB, ()](lifestyle: Transient)
+        )](ctor: installerLevelCtor),
 
         Installer[(
           Registration[ComponentC, ()](lifestyle: Transient)
@@ -39,11 +39,11 @@ suite "Constructor Tiers":
     check:
       c != nil
 
-  # test "Can resolve with installer level constructor":
-  #   let c = container.get(ComponentB)
+  test "Can resolve with installer level constructor":
+    let c = container.get(ComponentB)
 
-  #   check:
-  #     c != nil
+    check:
+      c != nil
 
   test "Can resolve with global constructor":
     let c = container.get(ComponentC)
